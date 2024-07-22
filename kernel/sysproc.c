@@ -81,6 +81,31 @@ int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
+  uint64 address;
+  if(argaddr(0,&address)<0)// 获取基地址
+	  return -1;
+  
+  int len;
+  if(argint(1, &len) < 0 || len > 32)// 获取页数量，最大32
+	  return -1;
+
+  uint64 mask_address;
+  if(argaddr(2, &mask_address) < 0)// 获取掩码地址
+	  return -1;
+
+  struct proc* proc = myproc();
+  uint32 mask = 0;// 掩码缓冲区
+  for(int i=0;i<len;++i){
+  	// walk函数在页表中找到给定虚拟地址的页表项
+  	pte_t* pte = walk(proc->pagetable, address + i * PGSIZE, 0);
+	if(*pte & PTE_A){// 被访问过
+		mask |= 1 << i;// 标记
+		*pte &= ~PTE_A;// 清除PTE_A
+	}
+  }
+  if(copyout(proc->pagetable, mask_address, (char*)&mask, 4) < 0) {// 拷贝到用户空间	  
+	  return -1;
+  }
   return 0;
 }
 #endif

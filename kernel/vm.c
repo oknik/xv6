@@ -432,3 +432,36 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void vmprint(pagetable_t pagetable)
+{
+	// pgtbl采用3层分页机制
+	// 虚地址27位，每层9位，每层2^9个页表条目，即512个PTE
+	// cnt：递归深度，cnt为2即递归3次时结束
+	static int cnt = 0;
+	if(cnt == 0){//打印页表起始位置
+		printf("page table %p\n", pagetable);
+	}
+	for(int i =0; i<512; i++){//遍历页表
+		pte_t pte = pagetable[i];
+		if(pte & PTE_V)	{//检查页表有效			
+			for(int j=0;j<=cnt;++j){//缩进
+				printf(" ..");
+			}
+			
+			if(cnt !=2 ){
+				//打印索引、内容、物理地址
+				printf("%d: pte %p pa %p\n",i, pte, PTE2PA(pte));
+				uint64 child = PTE2PA(pte);
+				cnt++;
+				vmprint((pagetable_t)child);//递归
+				cnt--;
+			}
+			else{
+				//结束递归
+				printf("%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+			}
+		}
+		
+	}
+}
