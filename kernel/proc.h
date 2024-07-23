@@ -86,12 +86,6 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 struct proc {
   struct spinlock lock;
 
-  uint64 handler_va;
-  int alarm_interval;
-  int passed_ticks; 
-  struct trapframe saved_trapframe;
-  int have_return;
-
   // p->lock must be held when using these:
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan
@@ -111,4 +105,30 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  
+  
+  int alarm_interval;
+  int alarm_ticks;
+  uint64 alarm_handler;
+  struct trapframe alarm_trapframe;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

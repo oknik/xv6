@@ -122,6 +122,7 @@ panic(char *s)
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+  backtrace();
   for(;;)
     ;
 }
@@ -133,13 +134,16 @@ printfinit(void)
   pr.locking = 1;
 }
 
-void 
-backtrace(void)
-{
-  uint64 fp_address = r_fp();// 取帧指针
-  while(fp_address != PGROUNDDOWN(fp_address)) {// PGROUNDUP是一个宏，通常用于将地址向上取整到页边界，确保循环在合理的范围内执行，以避免访问无效地址。
-  printf("%p\n", *(uint64*)(fp_address-8));//-8:上一个函数调用的返回地址
-  fp_address = *(uint64*)(fp_address - 16);//-16:上一个栈帧的帧指针
+void backtrace(void){
+  printf("backtrace:\n");
+  uint64 fp = r_fp();// 取帧指针
+  uint64 *frame = (uint64 *) fp;
+  uint64 up = PGROUNDUP(fp);// PGROUNDUP是一个宏，通常用于将地址向上取整到页边界，确保循环在合理的范围内执行，以避免访问无效地址
+  uint64 down = PGROUNDDOWN(fp);// GROUNDUP类似
+  while (fp < up && fp > down){
+    printf("%p\n", frame[-1]);//-1:上一个函数调用的返回地址
+    fp = frame[-2];//-2:上一个栈帧的帧指针
+    frame = (uint64 *)fp;
  }
 }
 

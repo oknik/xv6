@@ -76,16 +76,12 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  
+
   if(which_dev == 2) {// cpu定时器中断
-    struct proc *proc = myproc();
-    if (proc->alarm_interval && proc->have_return) {
-    // 如果进程的闹钟间隔不为零并且处理函数已返回
-      if (++proc->passed_ticks == 2) {
-        proc->saved_trapframe = *p->trapframe;// 保存当前的陷阱帧
-        proc->trapframe->epc = proc->handler_va;// 将程序计数器设置为闹钟处理函数的地址
-        proc->passed_ticks = 0;//重置滴答
-        proc->have_return = 0;//防止重入
+    if (p->alarm_interval){// 闹钟间隔不为零（设置了时钟）
+      if (++p->alarm_ticks == p->alarm_interval){// 计时器增加 如果时间到了
+        memmove(&(p->alarm_trapframe), p->trapframe, sizeof(*(p->trapframe)));// 保存进程当前的CPU状态，包括寄存器值和程序计数器
+        p->trapframe->epc = p->alarm_handler;// 将trapframe的程序计数器（epc）设置为闹钟处理函数（alarm_handler）的地址，这样当恢复trapframe时，进程将跳转到闹钟处理函数执行
       }
     }
     yield();// 让出cpu
