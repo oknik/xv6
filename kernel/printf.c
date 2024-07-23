@@ -132,3 +132,31 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void 
+backtrace(void)
+{
+  uint64 fp_address = r_fp();// 取帧指针
+  while(fp_address != PGROUNDDOWN(fp_address)) {// PGROUNDUP是一个宏，通常用于将地址向上取整到页边界，确保循环在合理的范围内执行，以避免访问无效地址。
+  printf("%p\n", *(uint64*)(fp_address-8));//-8:上一个函数调用的返回地址
+  fp_address = *(uint64*)(fp_address - 16);//-16:上一个栈帧的帧指针
+ }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

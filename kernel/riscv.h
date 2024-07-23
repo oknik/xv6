@@ -1,9 +1,13 @@
 // which hart (core) is this?
+// 内联函数:读取当前的帧指针(即so寄存器的值)，并将其返回。
 static inline uint64
 r_mhartid()
 {
-  uint64 x;
+  uint64 x;// 用于存储帧指针取值asm
   asm volatile("csrr %0, mhartid" : "=r" (x) );
+  // volatile告诉编译器不要优化这条指令，每次都要执行
+  // mv(Move)指令:将s寄存器的值移动到%0(输出寄存器)
+  //"=r"表示编译器应选择一个寄存器来存储输出，并将其值赋给变量x
   return x;
 }
 
@@ -299,6 +303,14 @@ r_sp()
   return x;
 }
 
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
+
 // read and write tp, the thread pointer, which holds
 // this core's hartid (core number), the index into cpus[].
 static inline uint64
@@ -343,6 +355,7 @@ sfence_vma()
 #define PTE_W (1L << 2)
 #define PTE_X (1L << 3)
 #define PTE_U (1L << 4) // 1 -> user can access
+#define PTE_A (1L << 6) //PTE A
 
 // shift a physical address to the right place for a PTE.
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)

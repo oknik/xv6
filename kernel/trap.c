@@ -76,9 +76,20 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  
+  if(which_dev == 2) {// cpu定时器中断
+    struct proc *proc = myproc();
+    if (proc->alarm_interval && proc->have_return) {
+    // 如果进程的闹钟间隔不为零并且处理函数已返回
+      if (++proc->passed_ticks == 2) {
+        proc->saved_trapframe = *p->trapframe;// 保存当前的陷阱帧
+        proc->trapframe->epc = proc->handler_va;// 将程序计数器设置为闹钟处理函数的地址
+        proc->passed_ticks = 0;//重置滴答
+        proc->have_return = 0;//防止重入
+      }
+    }
+    yield();// 让出cpu
+  }
 
   usertrapret();
 }
