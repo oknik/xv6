@@ -95,26 +95,56 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  //
-  // Your code here.
-  //
-  // the mbuf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after sending.
-  //
+  acquire(&e1000_lock);
+  uint32 ind = regs[E1000_TDT]; // 读取E1000_TDT控制寄存器，向E1000询问等待下一个数据包的TX环索引
+  struct tx_desc *desc = &tx_ring[ind]; // 获取 buffer 的描述符，其中存储了关于该 buffer 的各种信息
+
+  if(!(desc->status & E1000_TXD_STAT_DD)) {// 检查环是否溢出
+  //如果E1000_TXD_STAT_DD未在E1000_TDT索引的描述符中设置，则E1000尚未完成先前相应的传输请求
+    release(&e1000_lock);
+    return -1;
+  }
   
+  // 如果该下标仍有之前发送完毕但未释放的 mbuf，则释放
+  if(tx_mbufs[ind]) {
+    mbuffree(tx_mbufs[ind]);// 释放从该描述符传输的最后一个mbuf
+    tx_mbufs[ind] = 0;
+  }
+
+  // 将要发送的 mbuf 的内存地址与长度填写到发送描述符中
+  desc->addr = (uint64)m->head;// 数据包内容
+  desc->length = m->len;// 数据包长度
+  // 设置必要的cmd标志
+  // EOP 表示该 buffer 含有一个完整的 packet
+  // RS 告诉网卡在发送完成后，设置 status 中的 E1000_TXD_STAT_DD 位，表示发送完成
+  desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  tx_mbufs[ind] = m;// 保留新 mbuf 的指针，方便后续再次用到同一下标时释放
+
+  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;// 更新环位置
+  release(&e1000_lock);
   return 0;
 }
 
 static void
 e1000_recv(void)
 {
-  //
-  // Your code here.
-  //
-  // Check for packets that have arrived from the e1000
-  // Create and deliver an mbuf for each packet (using net_rx()).
-  //
+  while(1) { // 每次 recv 可能接收多个包
+    uint32 ind = (regs[E1000_RDT] + 1) % RX_RING_SIZE;// 向E1000询问下一个等待接收数据包（如果有）所在的环索引
+    struct rx_desc *desc = &rx_ring[ind];
+    
+    // 如果需要接收的包都已经接收完毕，则退出
+    if(!(desc->status & E1000_RXD_STAT_DD)) {//通过检查描述符status部分中的E1000_RXD_STAT_DD位来检查新数据包是否可用
+      return;
+    }
+
+    rx_mbufs[ind]->len = desc->length;// 长度添加到描述符
+    net_rx(rx_mbufs[ind]); // 传递给上层网络栈 上层负责释放 mbuf
+    rx_mbufs[ind] = mbufalloc(0); // 分配并设置新的 mbuf，供给下一次轮到该下标时使用
+    desc->addr = (uint64)rx_mbufs[ind]->head;// 数据指针添加到描述符
+    desc->status = 0;// 描述符状体位清零
+
+    regs[E1000_RDT] = ind;// 更新索引
+  }
 }
 
 void
