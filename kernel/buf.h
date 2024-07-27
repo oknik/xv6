@@ -8,5 +8,6 @@ struct buf {
   struct buf *prev; // LRU cache list
   struct buf *next;
   uchar data[BSIZE];
+  uint timestamp;  // 对于寻找未使用的缓存块从LRU算法改成了基于时间戳的
 };
 
