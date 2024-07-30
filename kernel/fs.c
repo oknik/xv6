@@ -400,6 +400,34 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+  
+  // 二级间接
+  bn -= NINDIRECT;
+  if(bn < NDOUBLYINDIRECT) {// 是否在双重间接块的范围内
+    // 获取双重间接块的地址
+    // 如果地址为0，表示该块尚未分配，则调用balloc(ip->dev)分配一个新的块，并将其地址存储在ip->addrs[NDIRECT + 1]中
+    if((addr = ip->addrs[NDIRECT + 1]) == 0) {
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+    }
+    bp = bread(ip->dev, addr);// 使用bread读取二级间接块
+    a = (uint*)bp->data;// 将数据转换为指向块地址的指针数组
+    // 获取单重间接块的地址
+    if((addr = a[bn / NINDIRECT]) == 0) {
+      a[bn / NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);// 调用log_write记录对二级间接块的修改。
+    }
+    brelse(bp);// 释放二级间接块缓冲区
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    bn %= NINDIRECT;// 计算在一级间接块内的偏移量
+    // 获取直接块的地址
+    if((addr = a[bn]) == 0) {
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
 
   panic("bmap: out of range");
 }
@@ -409,9 +437,9 @@ bmap(struct inode *ip, uint bn)
 void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
+  int i, j, k;
+  struct buf *bp, *bp2;
+  uint *a, *a2;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -430,6 +458,29 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+  
+  // 释放二级间接块
+  if(ip->addrs[NDIRECT + 1]) {
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);// 读缓冲区
+    a = (uint*)bp->data;// 将数据转换为指向块地址的指针数组
+    for(j = 0; j < NINDIRECT; ++j) {
+      if(a[j]) {// 指向一个有效的一级间接块
+        bp2 = bread(ip->dev, a[j]);
+        a2 = (uint*)bp2->data;
+        for(k = 0; k < NINDIRECT; ++k) {
+          if(a2[k]) {
+            bfree(ip->dev, a2[k]);
+          }
+        }
+        brelse(bp2);
+        bfree(ip->dev, a[j]);
+        a[j] = 0;
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT + 1] = 0;
   }
 
   ip->size = 0;

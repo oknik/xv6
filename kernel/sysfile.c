@@ -286,42 +286,82 @@ create(char *path, short type, short major, short minor)
 uint64
 sys_open(void)
 {
-  char path[MAXPATH];
-  int fd, omode;
-  struct file *f;
-  struct inode *ip;
-  int n;
+  char path[MAXPATH];// 路径
+  int fd, omode;// 文件描述符 打开模式
+  struct file *f;// 文件结构体指针
+  struct inode *ip;// inode结构体指针，表示文件或目录的节点
+  int n;// 用于存储 argstr 函数的返回值
+  
+  //获取参数
 
   if((n = argstr(0, path, MAXPATH)) < 0 || argint(1, &omode) < 0)
     return -1;
 
+  // 开始文件系统操作，确保操作的原子性和一致性
   begin_op();
 
-  if(omode & O_CREATE){
+  if(omode & O_CREATE){// 创建文件
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
       return -1;
     }
-  } else {
+  } else {// 查找路径对应的 inode
     if((ip = namei(path)) == 0){
       end_op();
       return -1;
     }
-    ilock(ip);
+    ilock(ip);// 锁定 inode
     if(ip->type == T_DIR && omode != O_RDONLY){
-      iunlockput(ip);
+      iunlockput(ip);// 不是只读模式就解锁
       end_op();
       return -1;
     }
   }
 
+  // 检查设备文件的主设备号是否合法
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
     return -1;
   }
+  
+  //符号链接解析
+  if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+  // O_NOFOLLOW 标志表示如果遇到符号链接，不要解析它。
+    int depth = 10, i;
+    int len;
+    char path[MAXPATH];
 
+    for(i = 0; i < depth; i++) {
+    // 第一次 readi：读取符号链接指向路径的长度 len
+    // 第二次 readi：读取符号链接指向的路径 path
+      if (readi(ip, 0, (uint64)&len, 0, sizeof(len)) != sizeof(len) ||
+          readi(ip, 0, (uint64)path, sizeof(len), len+1) != len+1) {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+      iunlockput(ip);// 释放当前的 inode，因为即将解析下一个路径
+
+      if((ip = namei(path)) == 0) {// 解析符号链接指向的路径
+        end_op();
+        return -1;
+      }
+
+      ilock(ip);
+      if(ip->type != T_SYMLINK)// 如果新的 inode 不是符号链接，跳出循环
+        break;
+    }
+
+    if (i >= depth) {// 检查解析深度
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+  
+  // 分配文件描述符
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
@@ -329,7 +369,8 @@ sys_open(void)
     end_op();
     return -1;
   }
-
+  
+  // 初始化文件结构体
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
@@ -482,5 +523,36 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  begin_op();
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  int len = strlen(target);
+  if (writei(ip, 0, (uint64)&len, 0, sizeof(len)) != sizeof(len) ||
+      writei(ip, 0, (uint64)target, sizeof(len), len+1) != len+1) {
+    // maybe we should test if the inode exists
+    // and when write fails, delete the created inode
+    // but we didnot do that here for simplicity
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
+
   return 0;
 }
