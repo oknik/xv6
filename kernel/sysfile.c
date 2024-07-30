@@ -529,24 +529,21 @@ sys_pipe(void)
 uint64
 sys_symlink(void)
 {
-  char target[MAXPATH], path[MAXPATH];
-  struct inode *ip;
+  char target[MAXPATH], path[MAXPATH];// 存储符号链接指向的目标路径  存储符号链接本身的路径
+  struct inode *ip;//  inode 结构体指针，表示文件或目录的节点
 
-  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)// 获取参数target path
     return -1;
 
   begin_op();
-  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {// 建一个类型为 T_SYMLINK 的文件
     end_op();
     return -1;
   }
 
   int len = strlen(target);
   if (writei(ip, 0, (uint64)&len, 0, sizeof(len)) != sizeof(len) ||
-      writei(ip, 0, (uint64)target, sizeof(len), len+1) != len+1) {
-    // maybe we should test if the inode exists
-    // and when write fails, delete the created inode
-    // but we didnot do that here for simplicity
+      writei(ip, 0, (uint64)target, sizeof(len), len+1) != len+1) {//写入ip文件
     iunlockput(ip);
     end_op();
     return -1;
