@@ -353,7 +353,7 @@ sys_open(void)
       if(ip->type != T_SYMLINK)// 如果新的 inode 不是符号链接，跳出循环
         break;
     }
-
+	
     if (i >= depth) {// 检查解析深度
       iunlockput(ip);
       end_op();
